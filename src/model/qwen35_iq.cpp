@@ -111,6 +111,18 @@ std::string Qwen35::iq_layer_check(const Layer& L) const {
   return "";
 }
 
+// Four output rows reduce register pressure for this measured M1 Max / 122B geometry.
+// NI_IQ_DOWN_ROWS=8 restores the original dispatch for interleaved comparisons.
+uint32_t Qwen35::iq_down_rows(const Layer& L) const {
+  static const int override_rows = env_int("NI_IQ_DOWN_ROWS", 0);
+  if (override_rows != 0 && override_rows != 4 && override_rows != 8)
+    fatal("NI_IQ_DOWN_ROWS must be 4 or 8");
+  if (override_rows) return uint32_t(override_rows);
+  const Gpu& g = Gpu::get();
+  return g.name() == "Apple M1 Max" && g.core_count() == 24 && cfg_.hidden == 3072 && cfg_.moe_I == 1024 &&
+         cfg_.shared_I == 1024 && cfg_.top_k == 8 && L.ed.iq == gguf::kIQ3_XXS ? 4u : 8u;
+}
+
 // One or a few token rows (decode, the small-batch verify), after enc_moe_rows' router and top-k: xrn_ the rows'
 // normalized inputs, ridx_ / rwts_ their experts and weights (the shared expert's last). x += moe.
 // bench_moe_iq on the M1 Pro, Qwen3.6-35B-A3B's layer 0 (IQ2_XXS gate/up, IQ2_S down), one row: gate/up 2 rows x 2
@@ -120,7 +132,8 @@ void Qwen35::enc_moe_iq_rows(Encoder& e, const Layer& L, int R, const Buffer& x)
   const uint32_t D = uint32_t(cfg_.hidden), I = uint32_t(cfg_.moe_I), SI = uint32_t(cfg_.shared_I);
   const uint32_t k = uint32_t(cfg_.top_k), Imax = std::max(I, SI);
   const kp::MoeIq p{D, I, SI, k, sec(L.eg), sec(L.ed)};
-  constexpr uint32_t gnr = 2, gsg = 2, dnr = 8;
+  constexpr uint32_t gnr = 2, gsg = 2;
+  const uint32_t dnr = iq_down_rows(L);
   e.use(pipe_iq("moei_gu_rows_" + L.eg.fmt() + "_r2"));
   e.buf(0, L.eg.w->buf); e.buf(1, L.eu.w->buf);
   e.buf(2, L.sg.w->buf); e.buf(3, L.sg.s->buf); e.buf(4, L.sg.b->buf);
@@ -130,7 +143,7 @@ void Qwen35::enc_moe_iq_rows(Encoder& e, const Layer& L, int R, const Buffer& x)
   e.buf(11, ridx_);
   e.dispatch((Imax + gnr * gsg - 1) / (gnr * gsg), k + 1, uint32_t(R), 32 * gsg);
   const bool t16 = I == 512 && SI == 512;  // the lanes of a row share its h (the kernel's T = 16)
-  e.use(pipe_iq("moei_down_rows_" + L.ed.fmt() + "_r8" + (t16 ? "_t16" : "")));
+  e.use(pipe_iq("moei_down_rows_" + L.ed.fmt() + "_r" + std::to_string(dnr) + (t16 ? "_t16" : "")));
   e.buf(0, L.ed.w->buf);
   e.buf(1, L.sd.w->buf); e.buf(2, L.sd.s->buf); e.buf(3, L.sd.b->buf);
   e.buf(4, eh_); e.buf(5, ridx_); e.buf(6, rwts_); e.buf(7, x);

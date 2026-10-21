@@ -354,7 +354,7 @@ void Qwen35::prewarm_pipelines() {
       if (L.eg.iq) {  // llama.cpp's IQ blocks (qwen35_iq.cpp)
         const bool t16 = cfg_.moe_I == 512 && cfg_.shared_I == 512;
         for (const std::string& n : {"moei_gu_rows_" + L.eg.fmt() + "_r2", "moe8i_gu_" + L.eg.fmt(),
-                                     "qrmi_gu_" + L.eg.fmt() + "_m32_n64_k32", "moei_down_rows_" + L.ed.fmt() + "_r8" +
+                                     "qrmi_gu_" + L.eg.fmt() + "_m32_n64_k32", "moei_down_rows_" + L.ed.fmt() + "_r" + std::to_string(iq_down_rows(L)) +
                                      (t16 ? "_t16" : ""), "moe8i_down_" + L.ed.fmt() + "_nf2",
                                      "qrmi_dn_" + L.ed.fmt() + "_m32_n64", std::string("moe_bucket3"),
                                      std::string("moe_topk256_rows"), std::string("moe8_plan"),

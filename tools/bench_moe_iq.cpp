@@ -13,6 +13,7 @@
 //   --fmt gu:dn    synthetic formats (iq2xxs, iq2s, iq3xxs, iq3s; default iq2xxs:iq2s)
 //   --validate     small shapes, one kernel run per command buffer: run it under MTL_SHADER_VALIDATION=1
 //                  MTL_DEBUG_LAYER=1 to catch out-of-bounds access
+//   --xl           validation geometry D=3072, I=1024, top-8 (small expert count)
 //   --variants     the tilings of each case side by side (rows: NR x simdgroups; v8: down NF; pf: tile widths),
 //                  and each case's kernels timed alone
 //   --src FILE     Metal source appended to the library (kernel experiments built on wfmt_iq.metal's helpers)
@@ -230,7 +231,7 @@ Layer real_layer(const std::string& dir, int L) {
     IqMat m;
     std::vector<uint64_t> ne;
     m.raw = tensor(n, ne, m.type);
-    if (!gg::iq_gpu_type(m.type)) fatal("%s is not IQ2_XXS / IQ2_S / IQ3_S", n.c_str());
+    if (!gg::iq_gpu_type(m.type)) fatal("%s is not IQ2_XXS / IQ2_S / IQ3_XXS / IQ3_S", n.c_str());
     m.K = uint32_t(ne[0]), m.N = uint32_t(ne[1]), m.E = uint32_t(ne[2]);
     m.upload();
     return m;
@@ -342,6 +343,8 @@ void time_variants(std::vector<Variant>& vs, int calls, int rotations, double by
     std::sort(s.begin(), s.end());
     printf("    %-40s %8.4f ms (%.4f-%.4f)", v.name.c_str(), m, s.front(), s.back());
     if (bytes_per_call > 0) printf("  %6.1f %s", bytes_per_call / m / 1e6, unit_label);
+    printf("  trials:");
+    for (double sample : v.ms) printf(" %.4f", sample);
     printf("\n");
   }
 }
@@ -407,9 +410,10 @@ void case_rows(const Layer& l, uint32_t R) {
   };
   const bool t16 = I == 512;
   std::vector<Cfg> cfgs = {{2, 2, 8, t16}};  // the model's (Qwen35::enc_moe_iq_rows)
-  if (g_validate) cfgs = {{2, 2, 8, t16}, {4, 1, 8, false}};
+  if (g_validate) cfgs = {{2, 2, 8, t16}, {2, 2, 4, t16}, {4, 1, 8, false}};
   if (g_variants) {
-    cfgs = {{4, 2, 8, false}, {4, 2, 8, t16}, {2, 2, 8, t16}, {4, 2, 16, t16}, {8, 1, 16, t16}, {8, 2, 16, t16}};
+    if (t16) cfgs = {{4, 2, 8, false}, {4, 2, 8, true}, {2, 2, 8, true}, {4, 2, 16, true}, {8, 1, 16, true}, {8, 2, 16, true}};
+    else cfgs = {{2, 2, 8, false}, {2, 2, 4, false}, {4, 2, 8, false}, {8, 2, 8, false}, {4, 1, 8, false}, {8, 1, 8, false}};
   }
   const Routing& rt = rts[0];
   // reference

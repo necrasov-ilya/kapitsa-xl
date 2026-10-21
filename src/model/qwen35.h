@@ -386,6 +386,7 @@ class Qwen35 : public Model {
   void check_shapes() const;
   bool moe_wide() const;
   bool moe_slot() const;
+  uint32_t iq_down_rows(const Layer& L) const;
   void load_config(const std::string& dir);
   struct ActBuf {
     Buffer Qwen35::*member;
