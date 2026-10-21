@@ -56,7 +56,7 @@ bool format_supported(int bits, int gs);
 std::string format_name(int bits, int gs);  // "bf16", "4-bit group 64", ...
 // The per-row MoE kernel (gate/up or down) for routed experts e and shared expert s, "" if none exists.
 // wide: the experts' staged h exceeds 4608 floats (Qwen35::moe_wide), so the down kernel's _w form ("" if none).
-std::string moe_rows_kernel(bool gate_up, const QLinear& e, const QLinear& s, bool wide = false);
+std::string moe_rows_kernel(bool gate_up, const QLinear& e, const QLinear& s, bool wide = false, bool slot = false);
 
 struct Qwen35Config {
   int hidden = 0, layers = 0, vocab = 0;
@@ -385,6 +385,7 @@ class Qwen35 : public Model {
   Qwen35(const std::string& model_dir, int prefill_chunk, NoLoad);
   void check_shapes() const;
   bool moe_wide() const;
+  bool moe_slot() const;
   void load_config(const std::string& dir);
   struct ActBuf {
     Buffer Qwen35::*member;

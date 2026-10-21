@@ -34,7 +34,7 @@
 // (m2, m3, m6, m7): the permuted tables below (IQ3_S builds it from two 4-value grid words), and the signs spread as
 // nh_x2_dec8 does but to that order (iq_pairs).
 
-constant constexpr uint kIq2xxs = 1, kIq2s = 2, kIq3s = 3;  // FMT
+constant constexpr uint kIq2xxs = 1, kIq2s = 2, kIq3s = 3, kIq3xxs = 4;  // FMT
 
 constant ulong iq2xxs_gridp[256] = {
     0x0808080808080808ul, 0x080808080808082bul, 0x0808080808081919ul, 0x0808080808082b08ul,
@@ -429,6 +429,41 @@ constant uint iq3s_grid[512] = {
     0x0f090307u, 0x0f090501u, 0x0f090b01u, 0x0f0b0505u, 0x0f0b0905u, 0x0f0d0105u, 0x0f0d0703u, 0x0f0f0101u,
 };
 
+constant uint iq3xxs_grid[256] = {
+    0x04040404u, 0x04040414u, 0x04040424u, 0x04040c0cu, 0x04040c1cu, 0x04040c3eu, 0x04041404u, 0x04041414u,
+    0x04041c0cu, 0x04042414u, 0x04043e1cu, 0x04043e2cu, 0x040c040cu, 0x040c041cu, 0x040c0c04u, 0x040c0c14u,
+    0x040c140cu, 0x040c142cu, 0x040c1c04u, 0x040c1c14u, 0x040c240cu, 0x040c2c24u, 0x040c3e04u, 0x04140404u,
+    0x04140414u, 0x04140424u, 0x04140c0cu, 0x04141404u, 0x04141414u, 0x04141c0cu, 0x04141c1cu, 0x04141c3eu,
+    0x04142c0cu, 0x04142c3eu, 0x04143e2cu, 0x041c040cu, 0x041c043eu, 0x041c0c04u, 0x041c0c14u, 0x041c142cu,
+    0x041c3e04u, 0x04240c1cu, 0x04241c3eu, 0x04242424u, 0x04242c3eu, 0x04243e1cu, 0x04243e2cu, 0x042c040cu,
+    0x042c043eu, 0x042c1c14u, 0x042c2c14u, 0x04341c2cu, 0x04343424u, 0x043e0c04u, 0x043e0c24u, 0x043e0c34u,
+    0x043e241cu, 0x043e340cu, 0x0c04040cu, 0x0c04041cu, 0x0c040c04u, 0x0c040c14u, 0x0c04140cu, 0x0c04141cu,
+    0x0c041c04u, 0x0c041c14u, 0x0c041c24u, 0x0c04243eu, 0x0c042c04u, 0x0c0c0404u, 0x0c0c0414u, 0x0c0c0c0cu,
+    0x0c0c1404u, 0x0c0c1414u, 0x0c14040cu, 0x0c14041cu, 0x0c140c04u, 0x0c140c14u, 0x0c14140cu, 0x0c141c04u,
+    0x0c143e14u, 0x0c1c0404u, 0x0c1c0414u, 0x0c1c1404u, 0x0c1c1c0cu, 0x0c1c2434u, 0x0c1c3434u, 0x0c24040cu,
+    0x0c24042cu, 0x0c242c04u, 0x0c2c1404u, 0x0c2c1424u, 0x0c2c2434u, 0x0c2c3e0cu, 0x0c34042cu, 0x0c3e1414u,
+    0x0c3e2404u, 0x14040404u, 0x14040414u, 0x14040c0cu, 0x14040c1cu, 0x14041404u, 0x14041414u, 0x14041434u,
+    0x14041c0cu, 0x14042414u, 0x140c040cu, 0x140c041cu, 0x140c042cu, 0x140c0c04u, 0x140c0c14u, 0x140c140cu,
+    0x140c1c04u, 0x140c341cu, 0x140c343eu, 0x140c3e04u, 0x14140404u, 0x14140414u, 0x14140c0cu, 0x14140c3eu,
+    0x14141404u, 0x14141414u, 0x14141c3eu, 0x14142404u, 0x14142c2cu, 0x141c040cu, 0x141c0c04u, 0x141c0c24u,
+    0x141c3e04u, 0x141c3e24u, 0x14241c2cu, 0x14242c1cu, 0x142c041cu, 0x142c143eu, 0x142c240cu, 0x142c3e24u,
+    0x143e040cu, 0x143e041cu, 0x143e0c34u, 0x143e242cu, 0x1c04040cu, 0x1c040c04u, 0x1c040c14u, 0x1c04140cu,
+    0x1c04141cu, 0x1c042c04u, 0x1c04342cu, 0x1c043e14u, 0x1c0c0404u, 0x1c0c0414u, 0x1c0c1404u, 0x1c0c1c0cu,
+    0x1c0c2424u, 0x1c0c2434u, 0x1c14040cu, 0x1c14041cu, 0x1c140c04u, 0x1c14142cu, 0x1c142c14u, 0x1c143e14u,
+    0x1c1c0c0cu, 0x1c1c1c1cu, 0x1c241c04u, 0x1c24243eu, 0x1c243e14u, 0x1c2c0404u, 0x1c2c0434u, 0x1c2c1414u,
+    0x1c2c2c2cu, 0x1c340c24u, 0x1c341c34u, 0x1c34341cu, 0x1c3e1c1cu, 0x1c3e3404u, 0x24040424u, 0x24040c3eu,
+    0x24041c2cu, 0x24041c3eu, 0x24042c1cu, 0x24042c3eu, 0x240c3e24u, 0x24141404u, 0x24141c3eu, 0x24142404u,
+    0x24143404u, 0x24143434u, 0x241c043eu, 0x241c242cu, 0x24240424u, 0x24242c0cu, 0x24243424u, 0x242c142cu,
+    0x242c241cu, 0x242c3e04u, 0x243e042cu, 0x243e0c04u, 0x243e0c14u, 0x243e1c04u, 0x2c040c14u, 0x2c04240cu,
+    0x2c043e04u, 0x2c0c0404u, 0x2c0c0434u, 0x2c0c1434u, 0x2c0c2c2cu, 0x2c140c24u, 0x2c141c14u, 0x2c143e14u,
+    0x2c1c0414u, 0x2c1c2c1cu, 0x2c240c04u, 0x2c24141cu, 0x2c24143eu, 0x2c243e14u, 0x2c2c0414u, 0x2c2c1c0cu,
+    0x2c342c04u, 0x2c3e1424u, 0x2c3e2414u, 0x34041424u, 0x34042424u, 0x34042434u, 0x34043424u, 0x340c140cu,
+    0x340c340cu, 0x34140c3eu, 0x34143424u, 0x341c1c04u, 0x341c1c34u, 0x34242424u, 0x342c042cu, 0x342c2c14u,
+    0x34341c1cu, 0x343e041cu, 0x343e140cu, 0x3e04041cu, 0x3e04042cu, 0x3e04043eu, 0x3e040c04u, 0x3e041c14u,
+    0x3e042c14u, 0x3e0c1434u, 0x3e0c2404u, 0x3e140c14u, 0x3e14242cu, 0x3e142c14u, 0x3e1c0404u, 0x3e1c0c2cu,
+    0x3e1c1c1cu, 0x3e1c3404u, 0x3e24140cu, 0x3e24240cu, 0x3e2c0404u, 0x3e2c0414u, 0x3e2c1424u, 0x3e341c04u,
+};
+
 // ---- decode helpers ----
 struct IqSec {
   uint x1, x2, x3, d;  // byte offsets of the X1, X2, X3 and D sections
@@ -437,6 +472,28 @@ struct IqSec {
 // IQ3_S: qh | scale << 8 of sub-block i (global index)
 NI_INLINE uint iq3_e(const device uchar* W, IqSec s, uint i) {
   return uint(W[s.x2 + i]) | (extract_bits(uint(W[s.x3 + i / 2]), 4u * (i & 1u), 4) << 8);
+}
+
+// IQ3_XXS keeps four parity signs and one scale in its auxiliary word.
+template <int FMT>
+NI_INLINE uint iq3_signs(const device uchar* W, IqSec s, uint i) {
+  const uint aux = ((const device uint*)(W + s.x1))[i];
+  if (FMT != int(kIq3xxs)) return aux;
+  uint signs = 0;
+  for (uint l = 0; l < 4; ++l) {
+    const uint v = extract_bits(aux, 7u * l, 7);
+    signs |= (v | ((popcount(v) & 1u) << 7)) << (8u * l);
+  }
+  return signs;
+}
+template <int FMT>
+NI_INLINE uint iq3_extra(const device uchar* W, IqSec s, uint i) {
+  if (FMT == int(kIq3xxs)) return (((const device uint*)(W + s.x1))[i] >> 28) << 8;
+  return iq3_e(W, s, i);
+}
+template <int FMT>
+NI_INLINE uint iq3_grid(uint i) {
+  return FMT == int(kIq3xxs) ? iq3xxs_grid[i] : iq3s_grid[i];
 }
 
 // The 4 A pairs (e0, e4), (e1, e5), (e2, e6), (e3, e7) of one grid point, x 2^-24 with their signs: T = the magnitude
@@ -487,13 +544,14 @@ NI_INLINE float iq2s_dot32(uint2 q, uint e, thread const float4* xv) {
 
 // One sub-block of IQ3_S (q: 8 index low bytes, sg: 32 signs, e: qh | scale << 8) . xv[0..7], x 2^-48 without d.
 // Grid point p (values 4p .. 4p + 3): index byte p | qh bit p << 8.
+template <int FMT>
 NI_INLINE float iq3s_dot32(uint2 q, uint sg, uint e, thread const float4* xv) {
   float d = 0.0f;
   _Pragma("clang loop unroll(full)")
   for (int l = 0; l < 4; ++l) {
     const uint w = l < 2 ? q.x : q.y, sh = 16u * uint(l & 1);
-    const uint g0 = iq3s_grid[extract_bits(w, sh, 8) | ((e << (8 - 2 * l)) & 256u)];
-    const uint g1 = iq3s_grid[extract_bits(w, sh + 8, 8) | ((e << (7 - 2 * l)) & 256u)];
+    const uint g0 = iq3_grid<FMT>(extract_bits(w, sh, 8) | ((e << (8 - 2 * l)) & 256u));
+    const uint g1 = iq3_grid<FMT>(extract_bits(w, sh + 8, 8) | ((e << (7 - 2 * l)) & 256u));
     d = iq_fma8p(iq_pairs(iq3_T(g0, g1), sg >> (8 * l)), xv[2 * l], xv[2 * l + 1], d);
   }
   return iq_sub(extract_bits(e, 8, 4)) * d;
@@ -501,7 +559,7 @@ NI_INLINE float iq3s_dot32(uint2 q, uint sg, uint e, thread const float4* xv) {
 
 // FMT's results x this = the dot product (weights and sub-block scales as subnormals; IQ2 scales are (2s + 1) / 8)
 template <int FMT>
-NI_INLINE float iq_scale() { return FMT == int(kIq3s) ? 281474976710656.0f : 35184372088832.0f; }  // 2^48 / 2^45
+NI_INLINE float iq_scale() { return FMT == int(kIq3s) ? 281474976710656.0f : FMT == int(kIq3xxs) ? 70368744177664.0f : 35184372088832.0f; }  // 2^48 / 2^45
 
 NI_INLINE void iq_load_x32(const device float* x, uint k0, thread float4* xv) {
   const device float4* xp = (const device float4*)(x + k0);
@@ -542,9 +600,9 @@ NI_INLINE IqFetch iq_fetch(const device uchar* W, const device bfloat* ws, const
     const uint2 q = ((const device uint2*)W)[i];
     f.c0 = uint4(q, 0u, 0u);
     if (FMT == int(kIq2s)) f.c0.z = ((const device ushort*)(W + s.x1))[i];
-    if (FMT == int(kIq3s)) {
-      f.c0.z = ((const device uint*)(W + s.x1))[i];
-      f.c0.w = iq3_e(W, s, i);
+    if (FMT == int(kIq3s) || FMT == int(kIq3xxs)) {
+      f.c0.z = iq3_signs<FMT>(W, s, i);
+      f.c0.w = iq3_extra<FMT>(W, s, i);
     }
     f.d = float(((const device half*)(W + s.d))[i / 8]);
   }
@@ -568,7 +626,7 @@ NI_INLINE float iq_compute(IqFetch f, thread const float4* xv, float xs) {
   }
   if (FMT == int(kIq2xxs)) return f.d * (nh_x2_sub(f.c0.y) * nh_x2_dot32(f.c0.xy, xv));
   if (FMT == int(kIq2s)) return f.d * iq2s_dot32(f.c0.xy, f.c0.z, xv);
-  return f.d * iq3s_dot32(f.c0.xy, f.c0.z, f.c0.w, xv);
+  return f.d * iq3s_dot32<FMT>(f.c0.xy, f.c0.z, f.c0.w, xv);
 }
 
 // Dot products of rows rr[j] (j < NR) of the NP matrices W[p] with x over K, reduced over the lanes that share them.
@@ -805,10 +863,10 @@ NI_INLINE void iq_a16(const device uchar* W, IqSec s, uint r, uint nsb, uint v0,
     p1 = iq_pairs(gt[extract_bits(q.x, 16u * hb + 8u, 8) | ((qh & 12u) << 6)], extract_bits(q.y, 16u * hb + 8u, 8));
     c = 2u * extract_bits(e, 8u + 4u * hb, 4) + 1u;
   } else {
-    const uint sg = ((const device uint*)(W + s.x1))[i], e = iq3_e(W, s, i);
+    const uint sg = iq3_signs<FMT>(W, s, i), e = iq3_extra<FMT>(W, s, i);
     const uint w = hb ? q.y : q.x, qh = extract_bits(e, 4u * hb, 4);
-    const uint g0 = iq3s_grid[(w & 0xFFu) | ((qh << 8) & 256u)], g1 = iq3s_grid[extract_bits(w, 8, 8) | ((qh << 7) & 256u)];
-    const uint g2 = iq3s_grid[extract_bits(w, 16, 8) | ((qh << 6) & 256u)], g3 = iq3s_grid[(w >> 24) | ((qh << 5) & 256u)];
+    const uint g0 = iq3_grid<FMT>((w & 0xFFu) | ((qh << 8) & 256u)), g1 = iq3_grid<FMT>(extract_bits(w, 8, 8) | ((qh << 7) & 256u));
+    const uint g2 = iq3_grid<FMT>(extract_bits(w, 16, 8) | ((qh << 6) & 256u)), g3 = iq3_grid<FMT>((w >> 24) | ((qh << 5) & 256u));
     p0 = iq_pairs(iq3_T(g0, g1), extract_bits(sg, 16u * hb, 8));
     p1 = iq_pairs(iq3_T(g2, g3), extract_bits(sg, 16u * hb + 8u, 8));
     c = 2u * (e >> 8) + 1u;
@@ -843,10 +901,10 @@ NI_INLINE void iq_a8(const device uchar* W, IqSec s, uint r, uint nsb, uint v0, 
     p0 = iq_pairs(gt[extract_bits(q.x, 8u * l, 8) | (extract_bits(e, 2u * l, 2) << 8)], extract_bits(q.y, 8u * l, 8));
     c = 2u * extract_bits(e, 8u + 4u * (l >> 1), 4) + 1u;
   } else {
-    const uint sg = ((const device uint*)(W + s.x1))[i], e = iq3_e(W, s, i);
+    const uint sg = iq3_signs<FMT>(W, s, i), e = iq3_extra<FMT>(W, s, i);
     const uint w = l < 2 ? q.x : q.y, sh = 16u * (l & 1u);
-    const uint g0 = iq3s_grid[extract_bits(w, sh, 8) | (((e >> (2u * l)) & 1u) << 8)];
-    const uint g1 = iq3s_grid[extract_bits(w, sh + 8u, 8) | (((e >> (2u * l + 1u)) & 1u) << 8)];
+    const uint g0 = iq3_grid<FMT>(extract_bits(w, sh, 8) | (((e >> (2u * l)) & 1u) << 8));
+    const uint g1 = iq3_grid<FMT>(extract_bits(w, sh + 8u, 8) | (((e >> (2u * l + 1u)) & 1u) << 8));
     p0 = iq_pairs(iq3_T(g0, g1), extract_bits(sg, 8u * l, 8));
     c = 2u * (e >> 8) + 1u;
   }
@@ -860,7 +918,7 @@ NI_INLINE void iq_a8(const device uchar* W, IqSec s, uint r, uint nsb, uint v0, 
 // d of 256-value block b of row r, times the factor that turns the MMA chain of iq_a16 operands into values
 template <int FMT>
 NI_INLINE float iq_dfac(const device uchar* W, IqSec s, uint r, uint nb, uint b) {
-  return float(((const device half*)(W + s.d))[r * nb + b]) * (FMT == int(kIq3s) ? 16777216.0f : 2097152.0f);
+  return float(((const device half*)(W + s.d))[r * nb + b]) * (FMT == int(kIq3s) ? 16777216.0f : FMT == int(kIq3xxs) ? 4194304.0f : 2097152.0f);
 }
 
 // ---- the 8-row verify (verify8.metal's moe8 passes; moe8_plan's tiles, the shared expert as tile 0xffffffff) ----
@@ -1219,7 +1277,7 @@ NI_INLINE void qrmi_dn_body(const device half* X, uint x_ld, uint m0, uint rows,
 
 #ifdef NI_WF_INST  // compiled into the second library only (Gpu::compile_formats), as wfmt.metal's
 // ---- instantiations: iq2xxs, iq2s, iq3s ----
-#define NI_IQ_ALL(X) X(iq2xxs, 1) X(iq2s, 2) X(iq3s, 3)
+#define NI_IQ_ALL(X) X(iq2xxs, 1) X(iq2s, 2) X(iq3s, 3) X(iq3xxs, 4)
 #define NI_IQ_INST(SFX, FMT)                                                                                  \
   NI_MOEI_GU_ROWS(moei_gu_rows_##SFX##_r2, FMT, 2)                                                         \
   NI_MOEI_GU_ROWS(moei_gu_rows_##SFX##_r4, FMT, 4)                                                         \

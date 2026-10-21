@@ -439,7 +439,7 @@ NI_INLINE void moeg_gu_rows_impl(const device uint32_t* gw, const device bfloat*
   }
 
 // down grid: (row tiles over D, R): x[r, row] += sum_slot wts[r, slot] * (down_slot[row] . h[r, slot]).
-template <int FE, int GE, int FD, int GD>
+template <int FE, int GE, int FD, int GD, bool SLOT>
 NI_INLINE void moeg_down_rows_impl(const device uint32_t* dw, const device bfloat* dsc, const device bfloat* dbi,
                                    const device uint32_t* sdw, const device bfloat* sds, const device bfloat* sdb,
                                    const device float* h, const device uint* idx, const device float* wts,
@@ -448,25 +448,34 @@ NI_INLINE void moeg_down_rows_impl(const device uint32_t* dw, const device bfloa
   constexpr int ROWS = 2;
   const uint r = tgp.y;
   const uint Imax = max(p.I, p.SI);
-  for (uint i = tid; i < (p.k + 1) * Imax / 4; i += ntg)
-    ((threadgroup float4*)hs)[i] = ((const device float4*)(h + r * (p.k + 1) * Imax))[i];
-  threadgroup_barrier(mem_flags::mem_threadgroup);
+  if (!SLOT) {
+    for (uint i = tid; i < (p.k + 1) * Imax / 4; i += ntg)
+      ((threadgroup float4*)hs)[i] = ((const device float4*)(h + r * (p.k + 1) * Imax))[i];
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+  }
   const uint row0 = (tgp.x * nsg + sg) * ROWS;
-  if (row0 >= p.D) return;
+  if (!SLOT && row0 >= p.D) return;
   uint rows[ROWS];
   for (int q = 0; q < ROWS; ++q) rows[q] = min(row0 + q, p.D - 1);
   float tot[ROWS] = {0.0f, 0.0f};
   for (uint slot = 0; slot <= p.k; ++slot) {
+    if (SLOT) {
+      for (uint i = tid; i < Imax / 4; i += ntg)
+        ((threadgroup float4*)hs)[i] = ((const device float4*)(h + (r * (p.k + 1) + slot) * Imax))[i];
+      threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
+    const uint at = SLOT ? 0 : slot * Imax;
     float a[ROWS] = {0.0f, 0.0f};
     if (slot == p.k) {
-      wf_rows_acc<FD, GD, ROWS>(sdw, sds, sdb, hs + slot * Imax, p.SI, 0, p.SI, rows, lane, a);
+      wf_rows_acc<FD, GD, ROWS>(sdw, sds, sdb, hs + at, p.SI, 0, p.SI, rows, lane, a);
     } else {
       const uint e = idx[r * p.k + slot];
       const uint wo = e * p.D * wf_wpr(FE, p.I), so = FE == 16 ? 0u : e * p.D * (p.I / uint(GE));
-      wf_rows_acc<FE, GE, ROWS>(dw + wo, dsc + so, dbi + so, hs + slot * Imax, p.I, 0, p.I, rows, lane, a);
+      wf_rows_acc<FE, GE, ROWS>(dw + wo, dsc + so, dbi + so, hs + at, p.I, 0, p.I, rows, lane, a);
     }
     const float ws = wts[r * (p.k + 1) + slot];
     for (int q = 0; q < ROWS; ++q) tot[q] += ws * a[q];
+    if (SLOT) threadgroup_barrier(mem_flags::mem_threadgroup);
   }
   for (int q = 0; q < ROWS; ++q) {
     const float v = simd_sum(tot[q]);
@@ -474,7 +483,7 @@ NI_INLINE void moeg_down_rows_impl(const device uint32_t* dw, const device bfloa
   }
 }
 
-#define NI_MOEG_DOWN_ROWS(NAME, FE, GE, FD, GD, HS)                                                             \
+#define NI_MOEG_DOWN_ROWS(NAME, FE, GE, FD, GD, HS, SLOT)                                                             \
   [[kernel]] void NAME(const device uint32_t* dw [[buffer(0)]], const device bfloat* dsc [[buffer(1)]],       \
                        const device bfloat* dbi [[buffer(2)]], const device uint32_t* sdw [[buffer(3)]],      \
                        const device bfloat* sds [[buffer(4)]], const device bfloat* sdb [[buffer(5)]],        \
@@ -485,7 +494,7 @@ NI_INLINE void moeg_down_rows_impl(const device uint32_t* dw, const device bfloa
                        uint sg [[simdgroup_index_in_threadgroup]], uint nsg [[simdgroups_per_threadgroup]],   \
                        uint lane [[thread_index_in_simdgroup]]) {                                             \
     threadgroup float hs[HS];                                                                                \
-    moeg_down_rows_impl<FE, GE, FD, GD>(dw, dsc, dbi, sdw, sds, sdb, h, idx, wts, x, p, tgp, tid, ntg2.x, sg, nsg, \
+    moeg_down_rows_impl<FE, GE, FD, GD, SLOT>(dw, dsc, dbi, sdw, sds, sdb, h, idx, wts, x, p, tgp, tid, ntg2.x, sg, nsg, \
                                         lane, hs);                                                           \
   }
 
@@ -1514,26 +1523,38 @@ NI_MOE8G(f3g64_f8g64, 3, 64, 8, 64)
 
 // MoE rows: routed experts x shared expert formats seen in MLX packs
 NI_MOEG_GU_ROWS(moeg_gu_rows_f16_f16, 16, 64, 16, 64)
-NI_MOEG_DOWN_ROWS(moeg_down_rows_f16_f16, 16, 64, 16, 64, 9 * 512)
+NI_MOEG_DOWN_ROWS(moeg_down_rows_f16_f16, 16, 64, 16, 64, 9 * 512, false)
 NI_MOEG_GU_ROWS(moeg_gu_rows_f8g64_f8g64, 8, 64, 8, 64)
-NI_MOEG_DOWN_ROWS(moeg_down_rows_f8g64_f8g64, 8, 64, 8, 64, 9 * 512)
+NI_MOEG_DOWN_ROWS(moeg_down_rows_f8g64_f8g64, 8, 64, 8, 64, 9 * 512, false)
 NI_MOEG_GU_ROWS(moeg_gu_rows_f4g64_f8g64, 4, 64, 8, 64)
-NI_MOEG_DOWN_ROWS(moeg_down_rows_f4g64_f8g64, 4, 64, 8, 64, 9 * 512)
+NI_MOEG_DOWN_ROWS(moeg_down_rows_f4g64_f8g64, 4, 64, 8, 64, 9 * 512, false)
 NI_MOEG_GU_ROWS(moeg_gu_rows_f6g64_f6g64, 6, 64, 6, 64)
-NI_MOEG_DOWN_ROWS(moeg_down_rows_f6g64_f6g64, 6, 64, 6, 64, 9 * 512)
+NI_MOEG_DOWN_ROWS(moeg_down_rows_f6g64_f6g64, 6, 64, 6, 64, 9 * 512, false)
 NI_MOEG_GU_ROWS(moeg_gu_rows_f6g64_f8g64, 6, 64, 8, 64)
-NI_MOEG_DOWN_ROWS(moeg_down_rows_f6g64_f8g64, 6, 64, 8, 64, 9 * 512)
+NI_MOEG_DOWN_ROWS(moeg_down_rows_f6g64_f8g64, 6, 64, 8, 64, 9 * 512, false)
 NI_MOEG_GU_ROWS(moeg_gu_rows_f5g64_f5g64, 5, 64, 5, 64)
-NI_MOEG_DOWN_ROWS(moeg_down_rows_f5g64_f5g64, 5, 64, 5, 64, 9 * 512)
+NI_MOEG_DOWN_ROWS(moeg_down_rows_f5g64_f5g64, 5, 64, 5, 64, 9 * 512, false)
 NI_MOEG_GU_ROWS(moeg_gu_rows_f5g64_f8g64, 5, 64, 8, 64)
-NI_MOEG_DOWN_ROWS(moeg_down_rows_f5g64_f8g64, 5, 64, 8, 64, 9 * 512)
+NI_MOEG_DOWN_ROWS(moeg_down_rows_f5g64_f8g64, 5, 64, 8, 64, 9 * 512, false)
 NI_MOEG_GU_ROWS(moeg_gu_rows_f3g64_f8g64, 3, 64, 8, 64)
-NI_MOEG_DOWN_ROWS(moeg_down_rows_f3g64_f8g64, 3, 64, 8, 64, 9 * 512)
+NI_MOEG_DOWN_ROWS(moeg_down_rows_f3g64_f8g64, 3, 64, 8, 64, 9 * 512, false)
 NI_MOEG_GU_ROWS(moeg_gu_rows_f4g64_f4g64, 4, 64, 4, 64)
-NI_MOEG_DOWN_ROWS(moeg_down_rows_f4g64_f4g64, 4, 64, 4, 64, 9 * 512)
+NI_MOEG_DOWN_ROWS(moeg_down_rows_f4g64_f4g64, 4, 64, 4, 64, 9 * 512, false)
 // wide experts ((k + 1) * max(I, SI) <= 7168 staged floats: Qwen3.8-Flash-Next's 11 x 640)
-NI_MOEG_DOWN_ROWS(moeg_down_rows_f4g64_f8g64_w, 4, 64, 8, 64, 7168)
-NI_MOEG_DOWN_ROWS(moeg_down_rows_f3g64_f8g64_w, 3, 64, 8, 64, 7168)
+NI_MOEG_DOWN_ROWS(moeg_down_rows_f4g64_f8g64_w, 4, 64, 8, 64, 7168, false)
+NI_MOEG_DOWN_ROWS(moeg_down_rows_f3g64_f8g64_w, 3, 64, 8, 64, 7168, false)
+
+// Large experts stage one slot at a time, bounded to 16 KiB of threadgroup memory.
+NI_MOEG_DOWN_ROWS(moeg_down_rows_f16_f16_slot, 16, 64, 16, 64, 4096, true)
+NI_MOEG_DOWN_ROWS(moeg_down_rows_f8g64_f8g64_slot, 8, 64, 8, 64, 4096, true)
+NI_MOEG_DOWN_ROWS(moeg_down_rows_f6g64_f6g64_slot, 6, 64, 6, 64, 4096, true)
+NI_MOEG_DOWN_ROWS(moeg_down_rows_f6g64_f8g64_slot, 6, 64, 8, 64, 4096, true)
+NI_MOEG_DOWN_ROWS(moeg_down_rows_f5g64_f5g64_slot, 5, 64, 5, 64, 4096, true)
+NI_MOEG_DOWN_ROWS(moeg_down_rows_f5g64_f8g64_slot, 5, 64, 8, 64, 4096, true)
+NI_MOEG_DOWN_ROWS(moeg_down_rows_f4g64_f8g64_slot, 4, 64, 8, 64, 4096, true)
+NI_MOEG_DOWN_ROWS(moeg_down_rows_f3g64_f8g64_slot, 3, 64, 8, 64, 4096, true)
+NI_MOEG_DOWN_ROWS(moeg_down_rows_f4g64_f4g64_slot, 4, 64, 4, 64, 4096, true)
+NI_MOEG_DOWN_ROWS(moeg_down_rows_f4g32_f8g64_slot, 4, 32, 8, 64, 4096, true)
 
 // Neural Engine split (ane_ffn.metal): weight staging from each format, and the GPU's share of the down projection
 #define NI_WF_ANE(SFX, F, GS) NI_ANE_WF(SFX, F, GS) NI_QRF_LD(qrf_##SFX##_m32_n128_ld, F, GS, 32, 128, 1, 4, false)

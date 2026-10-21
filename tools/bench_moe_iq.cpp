@@ -10,7 +10,7 @@
 //                  fetch them (SRC/<tensor>.bin, SRC/meta.json): blk.<L>.ffn_{gate,up,down}_exps.weight (and the
 //                  shared expert's tensors, made 8-bit group 64 as the importer makes them); else synthetic blocks
 //   --layer L      the layer of --tensors (default 0: IQ2_XXS gate/up, IQ2_S down; 39: IQ3_S down)
-//   --fmt gu:dn    synthetic formats (iq2xxs, iq2s, iq3s; default iq2xxs:iq2s)
+//   --fmt gu:dn    synthetic formats (iq2xxs, iq2s, iq3xxs, iq3s; default iq2xxs:iq2s)
 //   --validate     small shapes, one kernel run per command buffer: run it under MTL_SHADER_VALIDATION=1
 //                  MTL_DEBUG_LAYER=1 to catch out-of-bounds access
 //   --variants     the tilings of each case side by side (rows: NR x simdgroups; v8: down NF; pf: tile widths),
@@ -93,15 +93,16 @@ float h2f(uint16_t u) {
 }
 double hround(double v) { return double(_Float16(float(v))); }
 
-std::string fmt_name(uint32_t t) { return t == gg::kIQ2_XXS ? "iq2xxs" : t == gg::kIQ2_S ? "iq2s" : "iq3s"; }
+std::string fmt_name(uint32_t t) { return t == gg::kIQ2_XXS ? "iq2xxs" : t == gg::kIQ2_S ? "iq2s" : t == gg::kIQ3_XXS ? "iq3xxs" : "iq3s"; }
 uint32_t fmt_type(const std::string& s) {
   if (s == "iq2xxs") return gg::kIQ2_XXS;
   if (s == "iq2s") return gg::kIQ2_S;
+  if (s == "iq3xxs") return gg::kIQ3_XXS;
   if (s == "iq3s") return gg::kIQ3_S;
   fatal("unknown format %s", s.c_str());
   return 0;
 }
-size_t block_bytes(uint32_t t) { return t == gg::kIQ2_XXS ? 66 : t == gg::kIQ2_S ? 82 : 110; }
+size_t block_bytes(uint32_t t) { return t == gg::kIQ2_XXS ? 66 : t == gg::kIQ2_S ? 82 : t == gg::kIQ3_XXS ? 98 : 110; }
 
 // A stacked IQ matrix [E, N, K]: the GGUF blocks (host, for the reference) and the GPU layout
 struct IqMat {
@@ -220,7 +221,7 @@ Layer real_layer(const std::string& dir, int L) {
     const auto& m = meta.at(b + n);
     ne = m.at("ne").get<std::vector<uint64_t>>();
     const std::string t = m.at("type");
-    type = t == "IQ2_XXS" ? gg::kIQ2_XXS : t == "IQ2_S" ? gg::kIQ2_S : t == "IQ3_S" ? gg::kIQ3_S
+    type = t == "IQ2_XXS" ? gg::kIQ2_XXS : t == "IQ2_S" ? gg::kIQ2_S : t == "IQ3_XXS" ? gg::kIQ3_XXS : t == "IQ3_S" ? gg::kIQ3_S
            : t == "Q5_K" ? gg::kQ5_K : t == "Q6_K" ? gg::kQ6_K : t == "Q8_0" ? gg::kQ8_0 : t == "F32" ? gg::kF32 : 999;
     return read_file(dir + "/" + b + n + ".bin");
   };
@@ -305,6 +306,7 @@ struct Err {
 };
 
 bool g_validate = false, g_variants = false;
+int g_failures = 0;
 int g_trials = 7;
 
 double median(std::vector<double> v) {
@@ -458,6 +460,7 @@ void case_rows(const Layer& l, uint32_t R) {
     printf("  rows R=%u %s/%s gu nr %d x %u sg, down nr %d%s: gate/up rel.err %.2e, down rel.err %.2e%s\n", R,
            gf.c_str(), df.c_str(), c.nr, c.nsg, c.dnr, c.t16 ? " t16" : "", eh.rel(), ex.rel(),
            eh.rel() > 1e-5 || ex.rel() > 1e-5 ? "  FAILED" : "");
+    if (eh.rel() > 1e-5 || ex.rel() > 1e-5) ++g_failures;
     if (!g_variants && !g_validate) break;
   }
   // bytes per call: the touched experts (distinct per row) + the shared expert
@@ -638,6 +641,7 @@ void case_v8(const Layer& l, uint32_t R) {
     }
     printf("  v8 R=%u %s/%s nf %d: rel.err %.2e (exact inputs), %.2e vs fp64%s\n", R, gf.c_str(), df.c_str(), nf,
            ex.rel(), ex.rel2(), ex.rel() > 2e-3 ? "  FAILED" : "");
+    if (ex.rel() > 2e-3) ++g_failures;
   }
   const double eb = double(l.g.L.bytes + l.u.L.bytes + l.d.L.bytes) / E;
   const double sb = double(l.sg.q.size() + l.su.q.size() + l.sd.q.size()) * (1.0 + 4.0 / 64);
@@ -749,6 +753,7 @@ void case_pf(const Layer& l, uint32_t T) {
     printf("  pf T=%u %s/%s gu n%u%s/%u sg, dn n%u%s/%u sg: H rel.err %.2e (vs fp64 %.2e), Y rel.err %.2e (vs fp64 %.2e)%s\n",
            T, gf.c_str(), df.c_str(), c.gbn, c.gk, c.gwn, c.dbn, c.dk, c.dwn, eh.rel(), eh.rel2(), ey.rel(), ey.rel2(),
            eh.rel() > 2e-3 || ey.rel() > 1e-5 ? "  FAILED" : "");
+    if (eh.rel() > 2e-3 || ey.rel() > 1e-5) ++g_failures;
   }
   const double flop = 2.0 * P * (2.0 * I * D + double(D) * I);
   std::vector<Variant> vs;
@@ -763,12 +768,14 @@ void case_pf(const Layer& l, uint32_t T) {
 int main(int argc, char** argv) {
   std::string dir, fmt = "iq2xxs:iq2s";
   int layer = 0;
+  bool xl = false;
   std::vector<std::string> cases;
   for (int i = 1; i < argc; ++i) {
     const std::string a = argv[i];
     if (a == "--tensors" && i + 1 < argc) dir = argv[++i];
     else if (a == "--layer" && i + 1 < argc) layer = atoi(argv[++i]);
     else if (a == "--fmt" && i + 1 < argc) fmt = argv[++i];
+    else if (a == "--xl") xl = true;
     else if (a == "--validate") g_validate = true;
     else if (a == "--variants") g_variants = true;
     else if (a == "--trials" && i + 1 < argc) g_trials = atoi(argv[++i]);
@@ -790,7 +797,7 @@ int main(int argc, char** argv) {
   Layer l;
   if (g_validate) {
     const size_t c = fmt.find(':');
-    l = synth_layer(512, 512, 32, 4, fmt_type(fmt.substr(0, c)), fmt_type(fmt.substr(c + 1)));
+    l = synth_layer(xl ? 3072 : 512, xl ? 1024 : 512, 32, xl ? 8 : 4, fmt_type(fmt.substr(0, c)), fmt_type(fmt.substr(c + 1)));
   } else if (!dir.empty()) {
     l = real_layer(dir, layer);
   } else {
@@ -805,5 +812,5 @@ int main(int argc, char** argv) {
     if (want("v8 R=" + std::to_string(R))) case_v8(l, R);
   for (uint32_t T : {64u, 512u, 2048u, 4096u})
     if (want("pf T=" + std::to_string(T)) && (!g_validate || T <= 512)) case_pf(l, T);
-  return 0;
+  return g_failures ? 1 : 0;
 }

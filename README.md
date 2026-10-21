@@ -1,3 +1,9 @@
+# Kapitsa XL
+
+Экспериментальный форк [Kapitsa](https://github.com/nace-ai/kapitsa) для крупных моделей Qwen3.5 MoE на Apple Silicon.
+Добавлена поддержка Ornith-1.5-122B с экспертами IQ2_S и IQ3_XXS без переквантования.
+Инструкции запуска и результаты проверок находятся в [docs/xl.md](docs/xl.md).
+
 <picture>
   <source media="(max-width: 600px)" srcset="docs/assets/header-narrow.svg">
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/header-dark.svg">

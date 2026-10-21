@@ -741,7 +741,7 @@ void Qwen35::enc_moe_rows(Encoder& e, const Layer& L, int R, const Buffer& x, bo
   static const bool no_dedupe = !env_on("NI_DEDUPE");
   static const bool rc_moe = env_on("NI_RC");
   const bool all4 = L.eg.q4() && L.eu.q4() && L.ed.q4() && L.sg.q4() && L.su.q4() && L.sd.q4();
-  if (!mtp_layer && rc_moe && R > 1 && all4 && D <= 4096) {
+  if (!moe_slot() && !mtp_layer && rc_moe && R > 1 && all4 && D <= 4096) {
     struct { uint32_t R, k; } up{uint32_t(R), uint32_t(k)};
     e.use(pipe2("moe_unique_rows"));
     e.buf(0, ridx_); e.buf(1, rwts_); e.buf(2, ue_); e.buf(3, uw_); e.buf(4, un_);
@@ -795,7 +795,7 @@ void Qwen35::enc_moe_rows(Encoder& e, const Layer& L, int R, const Buffer& x, bo
     e.dispatch((D + rows * nsg - 1) / (rows * nsg), 1, 1, 32 * nsg);
     return;
   }
-  const std::string gu_k = moe_rows_kernel(true, L.eg, L.sg), dn_k = moe_rows_kernel(false, L.ed, L.sd, moe_wide());
+  const std::string gu_k = moe_rows_kernel(true, L.eg, L.sg), dn_k = moe_rows_kernel(false, L.ed, L.sd, moe_wide(), moe_slot());
   if (gu_k.empty() || dn_k.empty())
     fatal("MoE rows: no kernels for %s experts with a %s shared expert%s", format_name(L.eg.bits, L.eg.gs).c_str(),
           format_name(L.sg.bits, L.sg.gs).c_str(), mtp_layer ? " (MTP head)" : "");

@@ -174,14 +174,14 @@ std::string ftype_name(int64_t t) {
 
 struct Fmt {
   int bits = 16, gs = 0;  // bits 16: bf16
-  uint32_t iq = 0;        // routed experts kept in llama.cpp's blocks: their type (IQ2_XXS, IQ2_S, IQ3_S)
+  uint32_t iq = 0;        // routed experts kept in llama.cpp's blocks: their type (IQ2_XXS, IQ2_S, IQ3_XXS, IQ3_S)
   bool dense() const { return bits == 16 && !iq; }
   bool operator==(const Fmt& o) const { return bits == o.bits && gs == o.gs && iq == o.iq; }
   bool operator!=(const Fmt& o) const { return !(*this == o); }
 };
 const Fmt kBf16{16, 0}, k3g64{3, 64}, k4g32{4, 32}, k4g64{4, 64}, k5g64{5, 64}, k6g64{6, 64}, k8g64{8, 64};
-Fmt iq_fmt(uint32_t t) { return Fmt{t == kIQ3_S ? 3 : 2, 256, t}; }
-uint64_t iq_block_bytes(uint32_t t) { return t == kIQ2_XXS ? 66 : t == kIQ2_S ? 82 : 110; }
+Fmt iq_fmt(uint32_t t) { return Fmt{(t == kIQ3_S || t == kIQ3_XXS) ? 3 : 2, 256, t}; }
+uint64_t iq_block_bytes(uint32_t t) { return t == kIQ2_XXS ? 66 : t == kIQ2_S ? 82 : t == kIQ3_XXS ? 98 : 110; }
 
 std::string fmt_name(Fmt f) {
   if (f.iq) return type_name(f.iq) + " (as stored)";
@@ -331,12 +331,12 @@ void check_runs(const Hp& h, const std::string& file) {
   std::string why;
   if (h.dk != 128 || h.dv != 128) why = "DeltaNet head size " + std::to_string(h.dk) + "/" + std::to_string(h.dv) + " (128 needed)";
   else if (h.head_dim != 256) why = "attention head size " + std::to_string(h.head_dim) + " (256 needed)";
-  else if (h.hq % h.hkv || h.hq / h.hkv > 8) why = "a grouped-query ratio above 8";
+  else if (h.hkv <= 0 || h.hq % h.hkv || h.hq / h.hkv > 16) why = "a grouped-query ratio above 16";
   else if (h.conv != 4) why = "a convolution of " + std::to_string(h.conv) + " (4 needed)";
-  else if (h.moe && (h.moe_I % 512 || h.shared_I % 512)) why = "expert sizes that are not multiples of 512";
-  else if (h.moe && (h.topk + 1) * std::max(h.moe_I, h.shared_I) > 4608) why = "experts too large for the decode kernels";
-  else if (h.moe && (h.E != 256 || h.topk > 8)) why = std::to_string(h.E) + " experts, " + std::to_string(h.topk) + " per token (256 and at most 8 run)";
-  else if (h.moe && (h.H > 4096 || h.hv * h.dv > 4096 || h.hq * h.head_dim > 4096)) why = "a hidden size above 4096 for a MoE model";
+  else if (h.moe && (h.moe_I % 64 || h.shared_I % 64)) why = "expert sizes that are not multiples of 64";
+  else if (h.moe && std::max(h.moe_I, h.shared_I) > 4096) why = "experts too large for the decode kernels";
+  else if (h.moe && (h.E % 32 || h.E > 512 || h.topk <= 0 || h.topk > 16)) why = std::to_string(h.E) + " experts, " + std::to_string(h.topk) + " per token (at most 512 and 16 per token run)";
+  else if (h.moe && h.H > 4096) why = "a hidden size above 4096 for a MoE model";
   else if (h.H % 64) why = "a hidden size that is not a multiple of 64";
   if (!why.empty()) throw Error(file + " is a Qwen3.5-family model with " + why + ", which Kapitsa does not run.");
 }
@@ -651,7 +651,7 @@ struct Builder {
       }
       return;
     }
-    // trunk, routed experts in IQ2_XXS / IQ2_S / IQ3_S: kept as stored (src/kernels/wfmt_iq.metal reads the blocks; a
+    // trunk, routed experts in IQ2_XXS / IQ2_S / IQ3_XXS / IQ3_S: kept as stored (src/kernels/wfmt_iq.metal reads the blocks; a
     // GGUF's IQ2_XXS experts converted to 3-bit group 64 took 1.7x their bytes, which put Qwen3.6-35B-A3B's unsloth
     // UD-IQ2_XXS at 15 GB instead of 11). Gate and up of one type, in tensors of their own; shapes the kernels take.
     if (!gu && iq_gpu_type(g->type) && u->type == g->type && iq_gpu_type(d->type) && H % 512 == 0 && I % 256 == 0 &&
@@ -1455,9 +1455,9 @@ std::string import_model(const ImportOptions& opt) {
   }
   if (nx) {
     const bool all = std::find(xclone.begin(), xclone.end(), false) == xclone.end();
-    P.notes.insert(all ? "MoE experts kept as stored (IQ2_XXS / IQ2_S / IQ3_S): read in place through an APFS clone of "
+    P.notes.insert(all ? "MoE experts kept as stored (IQ2_XXS / IQ2_S / IQ3_XXS / IQ3_S): read in place through an APFS clone of "
                          "the GGUF (no second copy on the disk)"
-                       : "MoE experts kept as stored (IQ2_XXS / IQ2_S / IQ3_S), copied into experts.safetensors");
+                       : "MoE experts kept as stored (IQ2_XXS / IQ2_S / IQ3_XXS / IQ3_S), copied into experts.safetensors");
   }
   total += tok.tokenizer_json.size() + tok.tokenizer_config.size() + tok.template_.size() + (1u << 20);
   if (!opt.plan_dir.empty()) {  // hub::plan_dir: the headers a memory plan reads, and the sizes
@@ -1688,7 +1688,7 @@ int run_import(int argc, char** argv) {
       "Formats: Q4_0/Q4_1/Q4_K keep their codes (4-bit group 32); Q8_0/Q6_K become 8-bit, Q5_x 6-bit, IQ4_x/MXFP4/NVFP4\n"
       "5-bit (group 64), IQ3_x/Q3_K 4-bit group 32, IQ1/IQ2/Q2_K 3-bit group 64, F16/BF16/F32 bf16; in a mostly\n"
       "4-bit-or-better file its 1-3-bit tensors take the file's majority format. MoE experts take 5-bit group 64 from\n"
-      "4-bit types; in IQ2_XXS / IQ2_S / IQ3_S they stay as stored, read in place through an APFS clone of the GGUF\n"
+      "4-bit types; in IQ2_XXS / IQ2_S / IQ3_XXS / IQ3_S they stay as stored, read in place through an APFS clone of the GGUF\n"
       "(no second copy on the disk; KAPITSA_IMPORT_COPY=1 copies them).\n";
   for (int i = 2; i < argc; ++i) {
     const std::string a = argv[i];

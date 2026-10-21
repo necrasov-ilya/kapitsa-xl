@@ -579,13 +579,13 @@ void quantize(const float* x, size_t total, int bits, int gs, uint8_t* codes, ui
 
 // ---- IQ blocks in the GPU layout of src/kernels/wfmt_iq.metal ----
 
-bool iq_gpu_type(uint32_t type) { return type == kIQ2_XXS || type == kIQ2_S || type == kIQ3_S; }
+bool iq_gpu_type(uint32_t type) { return type == kIQ2_XXS || type == kIQ2_S || type == kIQ3_XXS || type == kIQ3_S; }
 
 IqLayout iq_layout(uint32_t type, size_t rows, size_t K) {
   // per 32 values: Q 8 bytes; IQ2_S: X1 qh | scales << 8 (2); IQ3_S: X1 signs (4), X2 qh (1), X3 scales (a byte per 64)
   IqLayout L;
   const size_t sb = rows * (K / 32);
-  const size_t x1 = type == kIQ2_S ? 2 : type == kIQ3_S ? 4 : 0, x2 = type == kIQ3_S ? 1 : 0;
+  const size_t x1 = type == kIQ2_S ? 2 : (type == kIQ3_S || type == kIQ3_XXS) ? 4 : 0, x2 = type == kIQ3_S ? 1 : 0;
   L.x1 = sb * 8;
   L.x2 = L.x1 + sb * x1;
   L.x3 = L.x2 + sb * x2;
@@ -596,7 +596,7 @@ IqLayout iq_layout(uint32_t type, size_t rows, size_t K) {
 
 void iq_repack(uint32_t type, const uint8_t* src, size_t rows, size_t K, size_t r0, size_t r1, uint8_t* dst) {
   const IqLayout L = iq_layout(type, rows, K);
-  const size_t nb = K / 256, bb = type == kIQ2_XXS ? 66 : type == kIQ2_S ? 82 : 110;
+  const size_t nb = K / 256, bb = type == kIQ2_XXS ? 66 : type == kIQ2_S ? 82 : type == kIQ3_XXS ? 98 : 110;
   for (size_t r = r0; r < r1; ++r)
     for (size_t b = 0; b < nb; ++b) {
       const uint8_t* blk = src + ((r - r0) * nb + b) * bb;
@@ -612,6 +612,9 @@ void iq_repack(uint32_t type, const uint8_t* src, size_t rows, size_t K, size_t 
           memcpy(q + 4, blk + 34 + 4 * j, 4);  // sign bytes
           const uint16_t e = uint16_t(blk[66 + j] | (blk[74 + j] << 8));  // qh | scales << 8
           memcpy(dst + L.x1 + (sb0 + j) * 2, &e, 2);
+        } else if (type == kIQ3_XXS) {
+          memcpy(q, blk + 2 + 8 * j, 8);
+          memcpy(dst + L.x1 + (sb0 + j) * 4, blk + 66 + 4 * j, 4);
         } else {
           memcpy(q, blk + 2 + 8 * j, 8);                            // index low bytes
           memcpy(dst + L.x1 + (sb0 + j) * 4, blk + 74 + 4 * j, 4);  // signs
